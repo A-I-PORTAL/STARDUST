@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Cosmic Trail</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      touch-action: manipulation;
+    }
+    body {
+      background: linear-gradient(45deg, #1a0b2e, #2c1b4f);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    #gameCanvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      position: relative;
+      z-index: 1;
+    }
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      z-index: 2;
+      background: rgba(0, 0, 0, 0.7);
+      transition: opacity 0.3s ease;
+    }
+    .hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #score {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: white;
+      font-size: 24px;
+      z-index: 2;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    }
+    button {
+      padding: 15px 30px;
+      font-size: 18px;
+      background: linear-gradient(45deg, #ff6b6b, #ff8e53);
+      border: none;
+      border-radius: 25px;
+      color: white;
+      cursor: pointer;
+      margin: 10px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s ease;
+    }
+    button:active {
+      transform: scale(0.95);
+    }
+    h1 {
+      font-size: 36px;
+      margin-bottom: 20px;
+      text-shadow: 0 0 15px rgba(255, 255, 255, 0.7);
+    }
+    .stars {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="score">Score: 0</div>
+  <div id="startScreen" class="overlay">
+    <h1>Cosmic Trail</h1>
+    <button id="startButton">Start Journey</button>
+  </div>
+  <div id="gameOver" class="overlay hidden">
+    <h1>Game Over</h1>
+    <div id="finalScore"></div>
+    <button id="restartButton">Try Again</button>
+  </div>
+  <div class="stars"></div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const startScreen = document.getElementById('startScreen');
+    const gameOverScreen = document.getElementById('gameOver');
+    const finalScoreElement = document.getElementById('finalScore');
+    const startButton = document.getElementById('startButton');
+    const restartButton = document.getElementById('restartButton');
+
+    // Responsive canvas sizing
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Game variables
+    let score = 0;
+    let gameRunning = false;
+    const trail = [];
+    const stardust = [];
+    const darkMatter = [];
+    let player = { x: canvas.width / 2, y: canvas.height / 2, radius: 10 };
+    let mouse = { x: player.x, y: player.y };
+
+    // Create background stars
+    function createStars() {
+      const stars = document.querySelector('.stars');
+      for (let i = 0; i < 100; i++) {
+        const star = document.createElement('div');
+        star.style.position = 'absolute';
+        star.style.width = `${Math.random() * 2}px`;
+        star.style.height = star.style.width;
+        star.style.background = 'white';
+        star.style.opacity = Math.random() * 0.7 + 0.3;
+        star.style.left = `${Math.random() * 100}%`;
+        star.style.top = `${Math.random() * 100}%`;
+        star.style.boxShadow = '0 0 5px white';
+        stars.appendChild(star);
+      }
+    }
+    createStars();
+
+    // Trail particle class
+    class TrailParticle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 5 + 2;
+        this.life = 1;
+        this.color = `hsl(${Math.random() * 360}, 70%, 70%)`;
+      }
+      update() {
+        this.life -= 0.02;
+        this.size *= 0.95;
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.life;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Stardust collectible class
+    class Stardust {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.radius = 5;
+        this.color = `hsl(${Math.random() * 360}, 80%, 80%)`;
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = this.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // Dark Matter obstacle class
+    class DarkMatter {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.radius = 15;
+        this.color = 'rgba(50, 0, 50, 0.8)';
+        this.velocity = {
+          x: (Math.random() - 0.5) * 2,
+          y: (Math.random() - 0.5) * 2
+        };
+      }
+      update() {
+        this.x += this.velocity.x;
+        this.y += this.velocity.y;
+        if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
+          this.velocity.x *= -1;
+        }
+        if (this.y + this.radius > canvas.height || this.y - this.radius < 0) {
+          this.velocity.y *= -1;
+        }
+      }
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = 'purple';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // Initialize game objects
+    function initGame() {
+      score = 0;
+      scoreElement.textContent = `Score: ${score}`;
+      trail.length = 0;
+      stardust.length = 0;
+      darkMatter.length = 0;
+      player = { x: canvas.width / 2, y: canvas.height / 2, radius: 10 };
+      mouse = { x: player.x, y: player.y };
+
+      for (let i = 0; i < 5; i++) {
+        stardust.push(new Stardust());
+      }
+      for (let i = 0; i < 3; i++) {
+        darkMatter.push(new DarkMatter());
+      }
+    }
+
+    // Collision detection
+    function checkCollisions() {
+      // Check stardust collisions
+      stardust.forEach((dust, index) => {
+        const dist = Math.hypot(player.x - dust.x, player.y - dust.y);
+        if (dist < player.radius + dust.radius) {
+          score += 10;
+          stardust.splice(index, 1);
+          stardust.push(new Stardust());
+          scoreElement.textContent = `Score: ${score}`;
+        }
+      });
+      // Check dark matter collisions
+      darkMatter.forEach(dark => {
+        const dist = Math.hypot(player.x - dark.x, player.y - dark.y);
+        if (dist < player.radius + dark.radius) {
+          endGame();
+        }
+      });
+    }
+
+    // Game loop
+    function animate() {
+      if (!gameRunning) return;
+      ctx.fillStyle = 'rgba(26, 11, 46, 0.2)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Update player position
+      const dx = mouse.x - player.x;
+      const dy = mouse.y - player.y;
+      player.x += dx * 0.1;
+      player.y += dy * 0.1;
+
+      // Add a trail particle at the player's position
+      trail.push(new TrailParticle(player.x, player.y));
+
+      // Update and draw trail particles
+      for (let i = trail.length - 1; i >= 0; i--) {
+        trail[i].update();
+        trail[i].draw();
+        if (trail[i].life <= 0) {
+          trail.splice(i, 1);
+        }
+      }
+
+      // Draw stardust collectibles
+      stardust.forEach(dust => dust.draw());
+
+      // Update and draw dark matter obstacles
+      darkMatter.forEach(dark => {
+        dark.update();
+        dark.draw();
+      });
+
+      // Draw player
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'white';
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = 'white';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Check for collisions
+      checkCollisions();
+
+      // Spawn new stardust if needed
+      if (stardust.length < 5) {
+        stardust.push(new Stardust());
+      }
+      // Increase dark matter count with score
+      if (darkMatter.length < 3 + Math.floor(score / 100)) {
+        darkMatter.push(new DarkMatter());
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    // Start the game
+    function startGame() {
+      gameRunning = true;
+      startScreen.classList.add('hidden');
+      gameOverScreen.classList.add('hidden');
+      initGame();
+      animate();
+    }
+
+    // End the game
+    function endGame() {
+      gameRunning = false;
+      gameOverScreen.classList.remove('hidden');
+      finalScoreElement.textContent = `Final Score: ${score}`;
+    }
+
+    // Handle mouse and touch movement
+    canvas.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      mouse.x = e.touches[0].clientX;
+      mouse.y = e.touches[0].clientY;
+    }, { passive: false });
+
+    // Button event listeners
+    startButton.addEventListener('click', startGame);
+    restartButton.addEventListener('click', startGame);
+
+    // Prevent context menu on mobile
+    document.addEventListener('contextmenu', e => e.preventDefault());
+
+    // Handle orientation change
+    window.addEventListener('orientationchange', () => {
+      resizeCanvas();
+      initGame();
+    });
+  </script>
+</body>
+</html>
